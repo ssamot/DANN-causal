@@ -43,6 +43,7 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     (xte, tte, yte), (y_cfte, mu0te, mu1te) = test
     evaluator_test = Evaluator(yte, tte, y_cf=y_cfte, mu0=mu0te, mu1=mu1te)
 
+    # zero mean, unit variance for x and y during training
     xm, xs = np.mean(xtr, axis = 0), np.std(xtr, axis = 0)
     xtr, xva, xte = (xtr - xm) / xs, (xva - xm) / xs, (xte - xm) / xs
 
@@ -53,16 +54,12 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     evaluator_train = Evaluator(yalltr, talltr, y_cf=np.concatenate([y_cftr, y_cfva], axis=0),
                                 mu0=np.concatenate([mu0tr, mu0va], axis=0), mu1=np.concatenate([mu1tr, mu1va], axis=0))
 
-    # zero mean, unit variance for x and y during training
 
-
-                       #(xalltr - xm) / xs
-#
     model, regressor_model, domain_classification_model, embeddings_model = build_models(shape=(xalltr.shape[1],),
                                                                                          n_neurons=n_neurons)
 
     batches = batch_generator([xtr, ttr, to_categorical(ttr), ytr], batch_size)
-   
+
     t0 = time.time()
 
     for j in range(SAMPLING_ITERATIONS):
