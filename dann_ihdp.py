@@ -19,7 +19,7 @@ import distutils.util as ut
 parser = ArgumentParser()
 parser.add_argument('-reps', type=int, default=10)
 parser.add_argument('-earl', type=int, default=10)
-parser.add_argument('-iterations', type=int, default=10000)
+parser.add_argument('-iterations', type=int, default=100000)
 parser.add_argument('-print_every', type=int, default=1000)
 parser.add_argument('-DANN', type=lambda x:bool(ut.strtobool(x)), default=False)
 args = parser.parse_args()
@@ -43,23 +43,26 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     (xte, tte, yte), (y_cfte, mu0te, mu1te) = test
     evaluator_test = Evaluator(yte, tte, y_cf=y_cfte, mu0=mu0te, mu1=mu1te)
 
+    xm, xs = np.mean(xtr, axis = 0), np.std(xtr, axis = 0)
+    xtr, xva, xte = (xtr - xm) / xs, (xva - xm) / xs, (xte - xm) / xs
+
+    ym, ys = np.mean(ytr), np.std(ytr)
+    ytr, yva = (ytr - ym) / ys, (yva - ym) / ys
+
     xalltr, talltr, yalltr = np.concatenate([xtr, xva], axis=0), np.concatenate([ttr, tva], axis=0), np.concatenate([ytr, yva], axis=0)
     evaluator_train = Evaluator(yalltr, talltr, y_cf=np.concatenate([y_cftr, y_cfva], axis=0),
                                 mu0=np.concatenate([mu0tr, mu0va], axis=0), mu1=np.concatenate([mu1tr, mu1va], axis=0))
 
     # zero mean, unit variance for x and y during training
-    ym, ys = np.mean(ytr), np.std(ytr)
-    ytr, yva = (ytr - ym) / ys, (yva - ym) / ys
 
-    # xm, xs = np.mean(xtr, axis = 0), np.std(xtr, axis = 0)
-    # xtr, xva, xalltr = (xtr - xm) / xs, (xva - xm) / xs, (xalltr - xm) / xs
 
+                       #(xalltr - xm) / xs
+#
     model, regressor_model, domain_classification_model, embeddings_model = build_models(shape=(xalltr.shape[1],),
                                                                                          n_neurons=n_neurons)
 
     batches = batch_generator([xtr, ttr, to_categorical(ttr), ytr], batch_size)
-    # T_batches = batch_generator([xdata, t, t], batch_size)
-
+   
     t0 = time.time()
 
     for j in range(SAMPLING_ITERATIONS):
@@ -67,34 +70,36 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
         X_batch, t_batch, tc_batch, y_batch = next(batches)
 
         if (args.DANN):
+            if(j > args.iterations//2):
+                class_weights = []
+                for layer in model.layers:
+                    if (not layer.name.startswith("do")):
+                        class_weights.append(layer.get_weights())
+                # print(X0.shape, t0.shape, y0.shape)
+                stats2 = domain_classification_model.train_on_batch([X_batch], 1-tc_batch)
 
-            class_weights = []
-            for layer in model.layers:
-                if (not layer.name.startswith("do")):
-                    class_weights.append(layer.get_weights())
-            # print(X0.shape, t0.shape, y0.shape)
-            stats2 = domain_classification_model.train_on_batch([X_batch], 1-tc_batch)
+                k = 0
+                for layer in model.layers:
+                    if (not layer.name.startswith("do")):
+                        layer.set_weights(class_weights[k])
+                        k += 1
 
-            k = 0
-            for layer in model.layers:
-                if (not layer.name.startswith("do")):
-                    layer.set_weights(class_weights[k])
-                    k += 1
-
-            adv_weights = []
-            for layer in model.layers:
-                if (layer.name.startswith("do")):
-                    adv_weights.append(layer.get_weights())
+                adv_weights = []
+                for layer in model.layers:
+                    if (layer.name.startswith("do")):
+                        adv_weights.append(layer.get_weights())
 
 
 
-            stats = model.train_on_batch([X_batch, t_batch], [y_batch, tc_batch])
+                stats = model.train_on_batch([X_batch, t_batch], [y_batch, tc_batch])
 
-            k = 0
-            for layer in model.layers:
-                if (layer.name.startswith("do")):
-                    layer.set_weights(adv_weights[k])
-                    k += 1
+                k = 0
+                for layer in model.layers:
+                    if (layer.name.startswith("do")):
+                        layer.set_weights(adv_weights[k])
+                        k += 1
+            else:
+                stats = regressor_model.train_on_batch([X_batch, t_batch], y_batch)
 
         else:
             stats = regressor_model.train_on_batch([X_batch, t_batch], y_batch)
@@ -115,7 +120,7 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
             "rmse_f_tr: {:0.3f}, rmse_cf_tr: {:0.3f}, ite_te: {:0.3f}, ate_te: {:0.3f}, pehe_te: {:0.3f}, " \
             "dt: {:0.3f}".format(j + 1, SAMPLING_ITERATIONS, score_train[0], score_train[1], score_train[2],
                                  rmses_train[0], rmses_train[1], score_test[0], score_test[1], score_test[2],
-                                 time.time() - t0))
+                                 time.time() - t0), stats)
             t0 = time.time()
 
     y0 = model.predict([xalltr, np.zeros(shape=(len(xalltr), 1))])[0]
