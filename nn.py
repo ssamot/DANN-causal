@@ -36,18 +36,18 @@ def build_models(shape,n_neurons):
     effect_regressor = BatchNormalization(name = "mo")(effect_regressor)
 
     domain_classifier = Dense(n_neurons, activation='linear', name="do4", use_bias=False)(feature_x)
-    domain_classifier = BatchNormalization(name="do5")(domain_classifier)
+    domain_classifier = BatchNormalization(name="do5", center=False, scale=False)(domain_classifier)
     domain_classifier = Activation("elu", name="do6")(domain_classifier)
     domain_classifier = Dropout(0.5, name="do7")(domain_classifier)
 
     domain_classifier = Dense(2, activation='linear', name="do8", use_bias=False)(domain_classifier)
-    domain_classifier = BatchNormalization(name="do9")(domain_classifier)
+    domain_classifier = BatchNormalization(name="do9", center=False, scale=False)(domain_classifier)
     domain_classifier = Activation("softmax", name = "do")(domain_classifier)
 
     model = Model(inputs=[feature_input, treatment_input] , outputs=[effect_regressor, domain_classifier])
     model.compile(optimizer=NormalizedSGD(lr = 0.001),
                   loss={'mo': 'mse', 'do': 'categorical_crossentropy'},
-                  loss_weights={'mo': 1, 'do': 1}, metrics=['accuracy'], )
+                  loss_weights={'mo': 1.0, 'do': 1}, metrics=['accuracy'], )
 
     regressor_model = Model(inputs=[feature_input, treatment_input], outputs=[effect_regressor])
     regressor_model.compile(optimizer=NormalizedSGD(lr = 0.001),
