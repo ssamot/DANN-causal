@@ -41,14 +41,13 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     (xtr, ttr, ytr), (y_cftr, mu0tr, mu1tr) = train
     (xva, tva, yva), (y_cfva, mu0va, mu1va) = valid
     (xte, tte, yte), (y_cfte, mu0te, mu1te) = test
-    evaluator_test = Evaluator(yte, tte, y_cf=y_cfte, mu0=mu0te, mu1=mu1te)
 
-    # zero mean, unit variance for x and y during training
-    xm, xs = np.mean(xtr, axis = 0), np.std(xtr, axis = 0)
+    xm, xs = np.mean(xtr, axis=0), np.std(xtr, axis=0)
     xtr, xva, xte = (xtr - xm) / xs, (xva - xm) / xs, (xte - xm) / xs
 
-    ym, ys = np.mean(ytr), np.std(ytr)
-    ytr, yva = (ytr - ym) / ys, (yva - ym) / ys
+    evaluator_test = Evaluator(yte, tte, y_cf=y_cfte, mu0=mu0te, mu1=mu1te)
+
+
 
     xalltr, talltr, yalltr = np.concatenate([xtr, xva], axis=0), np.concatenate([ttr, tva], axis=0), np.concatenate([ytr, yva], axis=0)
     evaluator_train = Evaluator(yalltr, talltr, y_cf=np.concatenate([y_cftr, y_cfva], axis=0),
@@ -58,7 +57,14 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     model, regressor_model, domain_classification_model, embeddings_model = build_models(shape=(xalltr.shape[1],),
                                                                                          n_neurons=n_neurons)
 
+    # zero mean, unit variance for x and y during training
+
+    ym, ys = np.mean(ytr), np.std(ytr)
+    ytr, yva = (ytr - ym) / ys, (yva - ym) / ys
+
+
     batches = batch_generator([xtr, ttr, to_categorical(ttr), ytr], batch_size)
+
 
     t0 = time.time()
 
@@ -67,36 +73,34 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
         X_batch, t_batch, tc_batch, y_batch = next(batches)
 
         if (args.DANN):
-            if(j > args.iterations//2):
-                class_weights = []
-                for layer in model.layers:
-                    if (not layer.name.startswith("do")):
-                        class_weights.append(layer.get_weights())
-                # print(X0.shape, t0.shape, y0.shape)
-                stats2 = domain_classification_model.train_on_batch([X_batch], 1-tc_batch)
 
-                k = 0
-                for layer in model.layers:
-                    if (not layer.name.startswith("do")):
-                        layer.set_weights(class_weights[k])
-                        k += 1
+            class_weights = []
+            for layer in model.layers:
+                if (not layer.name.startswith("do")):
+                    class_weights.append(layer.get_weights())
+            # print(X0.shape, t0.shape, y0.shape)
+            stats2 = domain_classification_model.train_on_batch([X_batch], 1-tc_batch)
 
-                adv_weights = []
-                for layer in model.layers:
-                    if (layer.name.startswith("do")):
-                        adv_weights.append(layer.get_weights())
+            k = 0
+            for layer in model.layers:
+                if (not layer.name.startswith("do")):
+                    layer.set_weights(class_weights[k])
+                    k += 1
+
+            adv_weights = []
+            for layer in model.layers:
+                if (layer.name.startswith("do")):
+                    adv_weights.append(layer.get_weights())
 
 
 
-                stats = model.train_on_batch([X_batch, t_batch], [y_batch, tc_batch])
+            stats = model.train_on_batch([X_batch, t_batch], [y_batch, tc_batch])
 
-                k = 0
-                for layer in model.layers:
-                    if (layer.name.startswith("do")):
-                        layer.set_weights(adv_weights[k])
-                        k += 1
-            else:
-                stats = regressor_model.train_on_batch([X_batch, t_batch], y_batch)
+            k = 0
+            for layer in model.layers:
+                if (layer.name.startswith("do")):
+                    layer.set_weights(adv_weights[k])
+                    k += 1
 
         else:
             stats = regressor_model.train_on_batch([X_batch, t_batch], y_batch)

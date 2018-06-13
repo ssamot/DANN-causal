@@ -43,7 +43,7 @@ class NormalizedSGD(Optimizer):
             self,
             lr: float=0.01,
             lr_update: float=0.001,
-            lr_max: float=0.0001,
+            lr_max: float=0.001,
             lr_min: float=1e-5,
             lr_force: float=0.0,
             norm: str = 'max',
