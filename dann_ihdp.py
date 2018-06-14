@@ -32,7 +32,7 @@ dataset = IHDP(replications=args.reps)
 scores = np.zeros((args.reps, 3))
 scores_test = np.zeros((args.reps, 3))
 
-batch_size = 90
+batch_size = 128
 SAMPLING_ITERATIONS = int(args.iterations)
 n_neurons = 64
 
@@ -44,8 +44,8 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
 
     print(sum(ttr), sum(tva), sum(tte))
 
-    xm, xs = np.mean(xtr, axis=0), np.std(xtr, axis=0)
-    xtr, xva, xte = (xtr - xm) / xs, (xva - xm) / xs, (xte - xm) / xs
+    # xm, xs = np.mean(xtr, axis=0), np.std(xtr, axis=0)
+    # xtr, xva, xte = (xtr - xm) / xs, (xva - xm) / xs, (xte - xm) / xs
 
     evaluator_test = Evaluator(yte, tte, y_cf=y_cfte, mu0=mu0te, mu1=mu1te)
 
@@ -89,18 +89,10 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
 
         if (args.DANN):
 
-            class_weights = []
-            for layer in model.layers:
-                if (not layer.name.startswith("do")):
-                    class_weights.append(layer.get_weights())
+            features = embeddings_model.predict(X_batch)
+            stats2 = domain_classification_model.train_on_batch([features], tc_batch, class_weight=[None, cw_s])
 
-            stats2 = domain_classification_model.train_on_batch([X_batch], tc_batch, class_weight=[None, cw_s])
 
-            k = 0
-            for layer in model.layers:
-                if (not layer.name.startswith("do")):
-                    layer.set_weights(class_weights[k])
-                    k += 1
 
             adv_weights = []
             for layer in model.layers:

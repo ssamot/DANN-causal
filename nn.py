@@ -9,6 +9,7 @@ def build_models(shape,n_neurons):
     #print(shape)
     feature_input = Input(shape = shape)
     treatment_input = Input(shape = (1,))
+    internal_feature_input = Input(shape = (2,))
 
     feature_x = Dense(n_neurons, activation='linear', use_bias=False)(feature_input)
     feature_x = BatchNormalization()(feature_x)
@@ -32,28 +33,43 @@ def build_models(shape,n_neurons):
     # effect_regressor = Activation("elu")(effect_regressor)
     # effect_regressor = Dropout(0.5) (effect_regressor)
 
-    effect_regressor = Dense(1, activation="linear", name = "mo3", use_bias=False)(effect_regressor)
-    effect_regressor = BatchNormalization(name = "mo")(effect_regressor)
 
-    domain_classifier = Dense(n_neurons, activation='linear', name="do4", use_bias=False)(feature_x)
-    domain_classifier = BatchNormalization(name="do5", center=False, scale=False)(domain_classifier)
-    domain_classifier = Activation("elu", name="do6")(domain_classifier)
-    domain_classifier = Dropout(0.5, name="do7")(domain_classifier)
+    effect_regressor = Dense(1, activation="linear", name = "mo", use_bias=True)(effect_regressor)
+    #effect_regressor = BatchNormalization(name = "mo")(effect_regressor)
 
-    domain_classifier = Dense(2, activation='linear', name="do8", use_bias=False)(domain_classifier)
-    domain_classifier = BatchNormalization(name="do9", center=False, scale=False)(domain_classifier)
-    domain_classifier = Activation("softmax", name = "do")(domain_classifier)
 
-    model = Model(inputs=[feature_input, treatment_input] , outputs=[effect_regressor, domain_classifier])
+    dom_layers = [
+        Dense(n_neurons, activation='linear', name="do4", use_bias=False),
+        BatchNormalization(name="do5", center=False, scale=False),
+        Activation("elu", name="do6"),
+        Dropout(0.5, name="do7"),
+
+        Dense(2, activation='linear', name="do8", use_bias=False),
+        BatchNormalization(name="do9", center=False, scale=False),
+        Activation("softmax", name="do"),
+
+    ]
+
+    prev_layer = feature_x
+    for layer in dom_layers:
+        prev_layer = layer(prev_layer)
+
+
+
+    model = Model(inputs=[feature_input, treatment_input] , outputs=[effect_regressor, prev_layer])
     model.compile(optimizer=NormalizedSGD(lr = 0.001),
                   loss={'mo': 'mse', 'do': 'categorical_crossentropy'},
-                  loss_weights={'mo': 1.0, 'do': 1}, metrics=['accuracy'], )
+                  loss_weights={'mo': 1.0, 'do': 7.0}, metrics=['accuracy'], )
 
     regressor_model = Model(inputs=[feature_input, treatment_input], outputs=[effect_regressor])
     regressor_model.compile(optimizer=NormalizedSGD(lr = 0.001),
                                         loss={'mo': 'mse'}, metrics=['accuracy'], )
 
-    domain_classification_model = Model(inputs=[feature_input], outputs=[domain_classifier])
+    prev_layer = internal_feature_input
+    for layer in dom_layers:
+        prev_layer = layer(prev_layer)
+
+    domain_classification_model = Model(inputs=[internal_feature_input], outputs=[prev_layer])
     domain_classification_model.compile(optimizer=NormalizedSGD(lr = 0.001),
                                         loss={'do': 'categorical_crossentropy'}, metrics=['accuracy'], )
 
