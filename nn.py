@@ -3,6 +3,16 @@ from keras.layers.merge import concatenate
 from keras.models import Model
 from keras.optimizers import Adam,SGD
 from utils import NormalizedSGD
+import keras.backend as K
+
+from keras.losses import categorical_crossentropy as cc
+def entropy( y):
+    y = K.clip(y, 1e-20, 1.0)
+    entropy = -K.sum(y * K.log(y))
+    return entropy
+
+def entropy_loss(y_true, y_pred, beta = 0.1):
+     return cc(y_true,y_pred) - beta* entropy(y_pred)
 
 
 def build_models(shape,n_neurons):
@@ -42,7 +52,7 @@ def build_models(shape,n_neurons):
         Dense(n_neurons, activation='linear', name="do4", use_bias=False),
         BatchNormalization(name="do5", center=False, scale=False),
         Activation("elu", name="do6"),
-        Dropout(0.5, name="do7"),
+        #Dropout(0.5, name="do7"),
 
         Dense(2, activation='linear', name="do8", use_bias=False),
         BatchNormalization(name="do9", center=False, scale=False),
@@ -58,8 +68,8 @@ def build_models(shape,n_neurons):
 
     model = Model(inputs=[feature_input, treatment_input] , outputs=[effect_regressor, prev_layer])
     model.compile(optimizer=NormalizedSGD(lr = 0.001),
-                  loss={'mo': 'mse', 'do': 'categorical_crossentropy'},
-                  loss_weights={'mo': 1.0, 'do': 7.0}, metrics=['accuracy'], )
+                  loss={'mo': 'mse', 'do': entropy_loss},
+                  loss_weights={'mo': 1.0, 'do': 1.0}, metrics=['accuracy'], )
 
     regressor_model = Model(inputs=[feature_input, treatment_input], outputs=[effect_regressor])
     regressor_model.compile(optimizer=NormalizedSGD(lr = 0.001),
@@ -71,7 +81,7 @@ def build_models(shape,n_neurons):
 
     domain_classification_model = Model(inputs=[internal_feature_input], outputs=[prev_layer])
     domain_classification_model.compile(optimizer=NormalizedSGD(lr = 0.001),
-                                        loss={'do': 'categorical_crossentropy'}, metrics=['accuracy'], )
+                                        loss={'do': entropy_loss}, metrics=['accuracy'], )
 
     embeddings_model = Model(inputs=[feature_input], outputs=[feature_x])
     embeddings_model.compile(optimizer="SGD", loss='categorical_crossentropy', metrics=['accuracy'])

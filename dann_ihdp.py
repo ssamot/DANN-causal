@@ -18,8 +18,8 @@ from utils import batch_generator
 import distutils.util as ut
 
 parser = ArgumentParser()
-parser.add_argument('-reps', type=int, default=10)
-parser.add_argument('-earl', type=int, default=10)
+parser.add_argument('-reps', type=int, default=1000)
+parser.add_argument('-earl', type=int, default=1000)
 parser.add_argument('-iterations', type=int, default=10000)
 parser.add_argument('-print_every', type=int, default=1000)
 parser.add_argument('-DANN', type=lambda x: bool(ut.strtobool(x)), default=False)
@@ -36,6 +36,15 @@ batch_size = 128
 SAMPLING_ITERATIONS = int(args.iterations)
 n_neurons = 64
 
+model, regressor_model, domain_classification_model, embeddings_model = None, None, None, None
+all_models = [model, regressor_model, domain_classification_model, embeddings_model]
+
+
+
+
+
+
+
 for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_valid_test()):
     print('\nReplication {}/{}, DANN:{}'.format(i + 1, args.reps, args.DANN))
     (xtr, ttr, ytr), (y_cftr, mu0tr, mu1tr) = train
@@ -47,6 +56,7 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     # xm, xs = np.mean(xtr, axis=0), np.std(xtr, axis=0)
     # xtr, xva, xte = (xtr - xm) / xs, (xva - xm) / xs, (xte - xm) / xs
 
+
     evaluator_test = Evaluator(yte, tte, y_cf=y_cfte, mu0=mu0te, mu1=mu1te)
 
     xalltr, talltr, yalltr = np.concatenate([xtr, xva], axis=0), np.concatenate([ttr, tva], axis=0), np.concatenate(
@@ -54,8 +64,12 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     evaluator_train = Evaluator(yalltr, talltr, y_cf=np.concatenate([y_cftr, y_cfva], axis=0),
                                 mu0=np.concatenate([mu0tr, mu0va], axis=0), mu1=np.concatenate([mu1tr, mu1va], axis=0))
 
-    model, regressor_model, domain_classification_model, embeddings_model = build_models(shape=(xalltr.shape[1],),
-                                                                                         n_neurons=n_neurons)
+    if (model is None):
+        model, regressor_model, domain_classification_model, embeddings_model = build_models(shape=(xalltr.shape[1],),
+                                                                                             n_neurons=n_neurons)
+        initial_weights = model.get_weights()
+    else:
+        model.set_weights(initial_weights)
 
     # zero mean, unit variance for x and y during training
 
@@ -70,7 +84,10 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
     cttr = to_categorical(ttr)
     # batches_0 = batch_generator([xtr[index_0], ttr[index_0],cttr[index_0] , ytr[index_0]], batch_size)
     # batches_1 = batch_generator([xtr[index_1], ttr[index_1], cttr[index_1], ytr[index_1]], batch_size)
+    from utils import batch_generator
     batches = batch_generator([xtr, ttr, cttr, ytr], batch_size)
+
+    #print(len(ytr), len(xtr))
 
     t0 = time.time()
 
@@ -88,6 +105,7 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
         X_batch, t_batch, tc_batch, y_batch = next(batches)
 
         if (args.DANN):
+
 
             features = embeddings_model.predict(X_batch)
             stats2 = domain_classification_model.train_on_batch([features], tc_batch, class_weight=[None, cw_s])
@@ -111,22 +129,24 @@ for i, (train, valid, test, contfeats, binfeats) in enumerate(dataset.get_train_
             stats = regressor_model.train_on_batch([X_batch, t_batch], y_batch)
 
         if j % args.print_every == 0:
-            y0 = model.predict([xalltr, np.zeros(shape=(len(xalltr), 1))])[0]
-            y1 = model.predict([xalltr, np.ones(shape=(len(xalltr), 1))])[0]
-            y0, y1 = y0 * ys + ym, y1 * ys + ym
-            score_train = evaluator_train.calc_stats(y1, y0)
-            rmses_train = evaluator_train.y_errors(y0, y1)
+            # y0 = model.predict([xalltr, np.zeros(shape=(len(xalltr), 1))])[0]
+            # y1 = model.predict([xalltr, np.ones(shape=(len(xalltr), 1))])[0]
+            # y0, y1 = y0 * ys + ym, y1 * ys + ym
+            # score_train = evaluator_train.calc_stats(y1, y0)
+            # rmses_train = evaluator_train.y_errors(y0, y1)
+            #
+            # y0t = model.predict([xte, np.zeros(shape=(len(xte), 1))])[0]
+            # y1t = model.predict([xte, np.ones(shape=(len(xte), 1))])[0]
+            # y0t, y1t = y0t * ys + ym, y1t * ys + ym
+            # score_test = evaluator_test.calc_stats(y1t, y0t)
+            #
+            # print("Epoch: {}/{},, ite_tr: {:0.3f}, ate_tr: {:0.3f}, pehe_tr: {:0.3f}, " \
+            #       "rmse_f_tr: {:0.3f}, rmse_cf_tr: {:0.3f}, ite_te: {:0.3f}, ate_te: {:0.3f}, pehe_te: {:0.3f}, " \
+            #       "dt: {:0.3f}".format(j + 1, SAMPLING_ITERATIONS, score_train[0], score_train[1], score_train[2],
+            #                            rmses_train[0], rmses_train[1], score_test[0], score_test[1], score_test[2],
+            #                            time.time() - t0), stats)
 
-            y0t = model.predict([xte, np.zeros(shape=(len(xte), 1))])[0]
-            y1t = model.predict([xte, np.ones(shape=(len(xte), 1))])[0]
-            y0t, y1t = y0t * ys + ym, y1t * ys + ym
-            score_test = evaluator_test.calc_stats(y1t, y0t)
-
-            print("Epoch: {}/{},, ite_tr: {:0.3f}, ate_tr: {:0.3f}, pehe_tr: {:0.3f}, " \
-                  "rmse_f_tr: {:0.3f}, rmse_cf_tr: {:0.3f}, ite_te: {:0.3f}, ate_te: {:0.3f}, pehe_te: {:0.3f}, " \
-                  "dt: {:0.3f}".format(j + 1, SAMPLING_ITERATIONS, score_train[0], score_train[1], score_train[2],
-                                       rmses_train[0], rmses_train[1], score_test[0], score_test[1], score_test[2],
-                                       time.time() - t0), stats)
+            print(j, "Time in secs", time.time() - t0)
             t0 = time.time()
 
     y0 = model.predict([xalltr, np.zeros(shape=(len(xalltr), 1))])[0]
